@@ -6,6 +6,9 @@ import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebas
 import { auth } from './firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { sendEmailVerification } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from './firebase';
+
 
 
 
@@ -13,6 +16,34 @@ import { sendEmailVerification } from 'firebase/auth';
 
 
 const KomazawaStudentPortal = () => {
+const saveUserData = async () => {
+  if (!user) return;
+  try {
+    const userRef = doc(db, 'users', user.uid);
+    await setDoc(userRef, {
+      events,
+      timetable
+    });
+  } catch (error) {
+    console.error("データ保存に失敗しました:", error);
+  }
+};
+const loadUserData = async () => {
+  if (!user) return;
+  try {
+    const userRef = doc(db, 'users', user.uid);
+    const docSnap = await getDoc(userRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data.events) setEvents(data.events);
+      if (data.timetable) setTimetable(data.timetable);
+    }
+  } catch (error) {
+    console.error("データ読み込みに失敗しました:", error);
+  }
+};
+
+
   const [currentTime, setCurrentTime] = useState(new Date());
   const [viewMode, setViewMode] = useState('calendar');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -37,8 +68,7 @@ const KomazawaStudentPortal = () => {
   const [loginPassword, setLoginPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-const [isSignUp, setIsSignUp] = useState(false); // ← これを追加
-
+const [isSignUp, setIsSignUp] = useState(false); 
 
   // 年間スケジュール
   const yearlySchedule = {
@@ -111,8 +141,6 @@ const [isSignUp, setIsSignUp] = useState(false); // ← これを追加
     return email.endsWith('@komazawa-u.ac.jp');
   };
 
-  // 認証状態の監視（実際のFirebaseを使用する場合）
-// useEffect(() => { ... }, []); の中で「認証状態の監視」と書かれている箇所と入れ替える
 useEffect(() => {
   const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
     if (currentUser) {
@@ -128,9 +156,16 @@ useEffect(() => {
       }
     }
     setUser(currentUser);
+  await loadUserData(); 
   });
   return () => unsubscribe();
 }, []);
+useEffect(() => {
+  if (user) {
+    saveUserData();
+  }
+}, [events, timetable]);
+
   // 天気情報取得
   useEffect(() => {
     const fetchWeather = async () => {
