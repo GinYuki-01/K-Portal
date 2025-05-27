@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Clock, Calendar, BookOpen, GraduationCap, Instagram, Mail, Compass, Building, ChevronLeft, ChevronRight, Plus, X, Edit, Cloud, Sun, CloudRain, LogIn, LogOut, User } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Clock, Calendar, BookOpen, GraduationCap, Instagram, Mail, Compass, Building, ChevronLeft, ChevronRight, Plus, X, Edit, Cloud, Sun, CloudRain, LogIn, LogOut, User, ExternalLink } from 'lucide-react';
 
 // Firebase認証の関数をインポート（実際のFirebase設定が必要）
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -9,12 +9,6 @@ import { sendEmailVerification } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { onSnapshot } from 'firebase/firestore';
-
-
-
-
-
-
 
 const KomazawaStudentPortal = () => {
 const saveUserData = async () => {
@@ -44,7 +38,6 @@ const loadUserData = async () => {
   }
 };
 
-
   const [currentTime, setCurrentTime] = useState(new Date());
   const [viewMode, setViewMode] = useState('calendar');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -69,7 +62,11 @@ const loadUserData = async () => {
   const [loginPassword, setLoginPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-const [isSignUp, setIsSignUp] = useState(false); 
+  const [isSignUp, setIsSignUp] = useState(false); 
+  
+  // 利用規約関連の状態
+  const [showTerms, setShowTerms] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   // 年間スケジュール
   const yearlySchedule = {
@@ -142,6 +139,18 @@ const [isSignUp, setIsSignUp] = useState(false);
     return email.endsWith('@komazawa-u.ac.jp');
   };
 
+// 利用規約モーダルの閉じる処理
+const handleTermsClose = () => {
+  setShowTerms(false);
+};
+
+// 利用規約への同意処理
+const handleTermsAgree = () => {
+  setAgreedToTerms(true);
+  setShowTerms(false);
+};
+
+
 useEffect(() => {
   let unsubscribeFirestore = null;
 
@@ -177,6 +186,7 @@ useEffect(() => {
     if (unsubscribeFirestore) unsubscribeFirestore();
   };
 }, []);
+
 useEffect(() => {
   if (user) {
     saveUserData();
@@ -196,15 +206,11 @@ useEffect(() => {
         // setWeather(data);
         
         // デモ用のモックデータ
-const API_KEY = '9a7f23efd0cad7fa3df276362380b756';
-const lat = 35.6284; // 駒澤大学の緯度
-const lon = 139.6731; // 駒澤大学の経度
-
-const response = await fetch(
-  `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric&lang=ja`
-);
-const data = await response.json();
-setWeather(data);
+        const mockWeather = {
+          weather: [{ main: 'Clear', description: '晴天' }],
+          main: { temp: 22, feels_like: 24, humidity: 65 }
+        };
+        setWeather(mockWeather);
 
       } catch (error) {
         console.error('天気情報の取得に失敗しました:', error);
@@ -272,6 +278,12 @@ const handleLogin = async () => {
     return;
   }
 
+  // 新規登録時は利用規約同意をチェック
+  if (isSignUp && !agreedToTerms) {
+    setAuthError('利用規約に同意してください');
+    return;
+  }
+
   setIsLoading(true);
   setAuthError('');
 
@@ -290,6 +302,7 @@ const handleLogin = async () => {
       setLoginEmail('');
       setLoginPassword('');
       setIsSignUp(false); // 登録後はログインモードに戻す
+      setAgreedToTerms(false); // 利用規約同意状態をリセット
       
     } else {
       // ログインの場合
@@ -341,6 +354,7 @@ const handleLogin = async () => {
     setIsLoading(false);
   }
 };
+
 // ログアウト処理
 const handleLogout = async () => {
   try {
@@ -353,7 +367,48 @@ const handleLogout = async () => {
   }
 };
 
-  // 現在の時限を取得
+
+const getLibraryStatus = () => {
+  const now = currentTime;
+  const dayOfWeek = now.getDay();
+  const timeStr = now.toTimeString().slice(0, 5);
+
+  if (dayOfWeek === 0) {
+    return {
+      isOpen: false,
+      status: '休館日',
+      hours: '日曜日は休館',
+      statusColor: 'text-gray-600',
+      bgColor: 'bg-gray-100'
+    };
+  }
+
+  if (dayOfWeek === 6) {
+    const isOpen = timeStr >= '08:30' && timeStr <= '18:00';
+    return {
+      isOpen,
+      status: isOpen ? '開館中' : '閉館中',
+      hours: '8:30-18:00',
+      statusColor: isOpen ? 'text-green-600' : 'text-red-600',
+      bgColor: isOpen ? 'bg-green-100' : 'bg-red-100'
+    };
+  }
+
+  const isOpen = timeStr >= '08:30' && timeStr <= '21:30';
+  return {
+    isOpen,
+    status: isOpen ? '開館中' : '閉館中',
+    hours: '8:30-21:30',
+    statusColor: isOpen ? 'text-green-600' : 'text-red-600',
+    bgColor: isOpen ? 'bg-green-100' : 'bg-red-100'
+  };
+};
+
+
+
+    
+
+// 現在の時限を取得
   const getCurrentPeriod = () => {
     const now = currentTime;
     const timeStr = now.toTimeString().slice(0, 5);
@@ -365,6 +420,7 @@ const handleLogout = async () => {
     }
     return null;
   };
+
 
   // 令和年号計算
   const getReiwaYear = (year) => {
@@ -447,193 +503,358 @@ const handleLogout = async () => {
     }
   };
 
+  // 利用規約モーダルコンポーネント（メモ化）
+  const TermsModal = React.memo(({ isVisible, onClose, onAgree }) => {
+    if (!isVisible) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
+          <div className="flex justify-between items-center p-6 border-b">
+            <h3 className="text-xl font-semibold">利用規約</h3>
+            <button
+              onClick={onClose}
+              className="p-1 hover:bg-gray-100 rounded"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-6">
+            <TermsOfService />
+          </div>
+          
+          <div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+            >
+              閉じる
+            </button>
+            <button
+              onClick={onAgree}
+              className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
+            >
+              同意して閉じる
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  });
+
+  // 利用規約コンポーネント（メモ化して再レンダリングを防ぐ）
+  const TermsOfService = React.memo(() => (
+    <div className="text-sm text-gray-700 space-y-4">
+      <div className="text-center">
+        <h2 className="text-lg font-bold text-gray-900 mb-2">KomazawaStudentPortal 利用規約</h2>
+        <p className="text-sm text-gray-600">最終更新日：2025年5月27日</p>
+      </div>
+      
+      <p>本規約は、「KomazawaStudentPortal」（以下「本アプリ」）の利用に関する条件を定めるものです。利用者は本規約に同意のうえ、本アプリを利用するものとします。</p>
+      
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-2">第1条（定義）</h3>
+        <p>本規約において使用する用語は、次のとおりとします。</p>
+        <ul className="list-disc list-inside ml-4 space-y-1">
+          <li>「本アプリ」とは、駒澤大学の学生・教職員向けに提供されるポータルアプリケーションをいいます。</li>
+          <li>「利用者」とは、本アプリを利用するすべての個人をいいます。</li>
+          <li>「運営者」とは、本アプリの開発・提供・管理を行う者をいいます。</li>
+        </ul>
+      </div>
+      
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-2">第2条（適用範囲）</h3>
+        <p>本規約は、利用者と運営者との間の本アプリに関するすべての関係に適用されます。</p>
+      </div>
+      
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-2">第3条（アカウント管理）</h3>
+        <ol className="list-decimal list-inside ml-4 space-y-1">
+          <li>利用者は、@komazawa-u.ac.jp ドメインのメールアドレスを使用し、正確な情報を登録するものとします。</li>
+          <li>ログイン情報は自己の責任で管理し、第三者に譲渡・貸与してはなりません。</li>
+          <li>認証されたアカウントの利用により発生したすべての行為は、当該利用者の責任とみなされます。</li>
+        </ol>
+      </div>
+      
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-2">第4条（知的財産権）</h3>
+        <p>本アプリに掲載されているコンテンツ（文章、画像、ロゴ、デザイン等）の著作権および知的財産権は、運営者または正当な権利を有する第三者に帰属します。利用者は、無断でこれらを使用、転載、複製してはなりません。</p>
+      </div>
+      
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-2">第5条（禁止事項）</h3>
+        <p>利用者は、以下の行為をしてはなりません。</p>
+        <ol className="list-decimal list-inside ml-4 space-y-1">
+          <li>サーバーへの過度なアクセス、連続アクセスなど、運営を妨げる行為</li>
+          <li>他者のアカウントを使用またはなりすます行為</li>
+          <li>本アプリを不正に解析、改ざんする行為</li>
+          <li>法令または公序良俗に反する行為</li>
+          <li>その他、運営者が不適切と判断する行為</li>
+        </ol>
+      </div>
+      
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-2">第6条（サービスの変更・中断・終了）</h3>
+        <p>運営者は、事前の通知なく本アプリの内容を変更、中断または終了することがあります。これによって生じた損害について、運営者は一切の責任を負いません。</p>
+      </div>
+      
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-2">第7条（免責事項）</h3>
+        <ol className="list-decimal list-inside ml-4 space-y-1">
+          <li>運営者は、本アプリの内容や提供に関して、正確性、完全性、有用性等を保証するものではありません。</li>
+          <li>本アプリの利用に関連して利用者が被った損害について、運営者は一切の責任を負いません。</li>
+          <li>通信障害、バグ、データ損失等による不利益についても同様です。</li>
+        </ol>
+      </div>
+      
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-2">第8条（個人情報の取り扱い）</h3>
+        <ol className="list-decimal list-inside ml-4 space-y-1">
+          <li>本アプリでは、Firebase Authentication によりログイン情報を管理し、ユーザーが登録する時間割・予定などの情報は、ローカルストレージまたはFirebase上に保存されます。</li>
+          <li>収集された情報は、本アプリの機能提供および改善以外の目的では利用されません。</li>
+          <li>本アプリはGoogle社等のサービスを利用しており、利用者は当該サービスのプライバシーポリシーにも同意したものとみなされます。</li>
+        </ol>
+      </div>
+      
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-2">第9条（第三者サービスの利用）</h3>
+        <p>本アプリは、Firebase（Google）等の外部サービスを利用しており、利用者はそのサービスの規約・方針にも従う必要があります。</p>
+      </div>
+      
+      <div>
+        <h3 className="font-semibold text-gray-900 mb-2">第10条（準拠法・管轄）</h3>
+        <p>本規約の解釈および適用は日本法に準拠します。本アプリに関連して紛争が生じた場合、東京地方裁判所を第一審の専属的合意管轄裁判所とします。</p>
+      </div>
+    </div>
+  ));
+
   const currentPeriod = getCurrentPeriod();
 
-  return (
+
+
+return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col">
       {/* リアルタイム時計（固定） */}
-      <div className="fixed top-0 left-0 right-0 bg-white shadow-lg p-4 z-40">
-        <div className="relative">
+      <div className="fixed top-0 left-0 right-0 bg-white shadow-lg p-3 sm:p-4 z-40">
+        <div className="relative min-h-[48px] sm:min-h-[56px]">
           {/* ログインボタンを右上に配置 */}
           <div className="absolute top-0 right-0">
             {user ? (
-              <div className="flex items-center space-x-2">
-                <div className="flex items-center space-x-1 bg-green-100 px-3 py-1 rounded-lg">
-                  <User className="w-4 h-4 text-green-600" />
-                  <span className="text-sm text-green-800">{user.email.split('@')[0]}</span>
+              <div className="flex items-center space-x-1 sm:space-x-2">
+                <div className="flex items-center space-x-1 bg-green-100 px-2 sm:px-3 py-1 rounded-lg">
+                  <User className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                  <span className="text-xs sm:text-sm text-green-800 truncate max-w-20 sm:max-w-none">{user.email.split('@')[0]}</span>
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                  className="p-1.5 sm:p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
                 >
-                  <LogOut className="w-5 h-5" />
+                  <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
               </div>
             ) : (
               <button
                 onClick={() => setShowLogin(true)}
-                className="flex items-center space-x-1 px-3 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
+                className="flex items-center space-x-1 px-2 sm:px-3 py-1.5 sm:py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
               >
-                <LogIn className="w-4 h-4" />
-                <span className="text-sm">ログイン</span>
+                <LogIn className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="text-xs sm:text-sm">ログイン</span>
               </button>
             )}
           </div>
           
           {/* 時計を中央に配置 */}
-          <div className="text-center">
-            <div className="text-4xl font-bold text-indigo-600">
+          <div className="flex items-center justify-center h-full">
+            <div className="text-3xl sm:text-4xl font-bold text-indigo-600">
               {currentTime.toLocaleTimeString('ja-JP')}
             </div>
           </div>
         </div>
       </div>
 
-{/* ログインモーダル */}
-{showLogin && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-    <div className="bg-white rounded-lg p-6 w-full max-w-md">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-xl font-semibold">{isSignUp ? '新規登録' : 'ログイン'}</h3>
-        <button
-          onClick={() => {
-            setShowLogin(false);
-            setAuthError('');
-            setLoginEmail('');
-            setLoginPassword('');
-            setIsSignUp(false); // モーダルを閉じる時はログインモードに戻す
-          }}
-          className="p-1 hover:bg-gray-100 rounded"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-      
-      <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-        <p className="text-sm text-blue-800">
-          <strong>駒澤大学の学生・教職員専用</strong><br />
-          @komazawa-u.ac.jp のメールアドレスでのみ{isSignUp ? '登録' : 'ログイン'}できます
-        </p>
-      </div>
+      {/* ログインモーダル */}
+      {showLogin && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold">{isSignUp ? '新規登録' : 'ログイン'}</h3>
+              <button
+                onClick={() => {
+                  setShowLogin(false);
+                  setAuthError('');
+                  setLoginEmail('');
+                  setLoginPassword('');
+                  setIsSignUp(false);
+                  setAgreedToTerms(false);
+                }}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>駒澤大学の学生・教職員専用</strong><br />
+                @komazawa-u.ac.jp のメールアドレスでのみ{isSignUp ? '登録' : 'ログイン'}できます
+              </p>
+            </div>
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            メールアドレス
-          </label>
-          <input
-            type="email"
-            value={loginEmail}
-            onChange={(e) => setLoginEmail(e.target.value)}
-            placeholder="example@komazawa-u.ac.jp"
-            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            パスワード
-          </label>
-          <input
-            type="password"
-            value={loginPassword}
-            onChange={(e) => setLoginPassword(e.target.value)}
-            placeholder="6文字以上"
-            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-        </div>
-        
-        {authError && (
-          <div className="p-3 bg-red-100 text-red-800 rounded-lg text-sm">
-            {authError}
-          </div>
-        )}
-        
-        <button
-          onClick={handleLogin}
-          disabled={isLoading}
-          className="w-full bg-indigo-500 text-white py-3 px-4 rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50"
-        >
-          {isLoading ? '処理中...' : (isSignUp ? '登録' : 'ログイン')}
-        </button>
-        
-        <button
-          onClick={() => setIsSignUp(prev => !prev)}
-          className="w-full text-indigo-600 hover:text-indigo-800 transition-colors text-sm"
-        >
-          {isSignUp ? 'ログインに戻る' : '新規登録はこちら'}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-      {/* ヘッダー情報（スクロール可能） */}
-      <div className="bg-white shadow-lg p-4 mb-4 mt-20">
-        {/* 日付・時限情報 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <div className="text-sm text-gray-600">西暦・令和</div>
-            <div className="text-lg font-semibold">
-              {currentTime.getFullYear()}年・令和{getReiwaYear(currentTime.getFullYear())}年
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  メールアドレス
+                </label>
+                <input
+                  type="email"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="example@komazawa-u.ac.jp"
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  パスワード
+                </label>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="6文字以上"
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              
+              {/* 利用規約同意チェックボックス（新規登録時のみ） */}
+              {isSignUp && (
+                <div className="space-y-3">
+                  <div className="flex items-start space-x-2">
+                    <input
+                      type="checkbox"
+                      id="terms-agreement"
+                      checked={agreedToTerms}
+                      onChange={(e) => setAgreedToTerms(e.target.checked)}
+                      className="mt-1 w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                    />
+                    <label htmlFor="terms-agreement" className="text-sm text-gray-700">
+                      <button
+                        type="button"
+                        onClick={() => setShowTerms(true)}
+                        className="text-indigo-600 hover:text-indigo-800 underline"
+                      >
+                        利用規約
+                      </button>
+                      に同意する場合はここにチェックしてください
+                    </label>
+                  </div>
+                </div>
+              )}
+              
+              {authError && (
+                <div className="p-3 bg-red-100 text-red-800 rounded-lg text-sm">
+                  {authError}
+                </div>
+              )}
+              
+              <button
+                onClick={handleLogin}
+                disabled={isLoading}
+                className="w-full bg-indigo-500 text-white py-3 px-4 rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50"
+              >
+                {isLoading ? '処理中...' : (isSignUp ? '登録' : 'ログイン')}
+              </button>
+              
+              <button
+                onClick={() => {
+                  setIsSignUp(prev => !prev);
+                  setAgreedToTerms(false);
+                }}
+                className="w-full text-indigo-600 hover:text-indigo-800 transition-colors text-sm"
+              >
+                {isSignUp ? 'ログインに戻る' : '新規登録はこちら'}
+              </button>
             </div>
           </div>
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <div className="text-sm text-gray-600">今日</div>
-            <div className="text-lg font-semibold">
+        </div>
+      )}
+
+      {/* 利用規約モーダル */}
+      <TermsModal 
+        isVisible={showTerms}
+        onClose={handleTermsClose}
+        onAgree={handleTermsAgree}
+      />
+
+      {/* ヘッダー情報（スクロール可能） */}
+      <div className="bg-white shadow-lg p-3 sm:p-4 mb-4 mt-16 sm:mt-20">
+        {/* 日付・時限情報 - レスポンシブ対応 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-center">
+          <div className="bg-gray-50 p-2 sm:p-3 rounded-lg">
+            <div className="text-xs sm:text-sm text-gray-600">西暦・令和</div>
+            <div className="text-sm sm:text-lg font-semibold">
+              <span className="block sm:inline">{currentTime.getFullYear()}年</span>
+              <span className="block sm:inline sm:before:content-['・']">令和{getReiwaYear(currentTime.getFullYear())}年</span>
+            </div>
+          </div>
+          <div className="bg-gray-50 p-2 sm:p-3 rounded-lg">
+            <div className="text-xs sm:text-sm text-gray-600">今日</div>
+            <div className="text-sm sm:text-lg font-semibold">
               {currentTime.getMonth() + 1}月{currentTime.getDate()}日
             </div>
           </div>
-          <div className="bg-indigo-100 p-3 rounded-lg col-span-2 md:col-span-2">
-            <div className="text-sm text-indigo-600">現在の時限</div>
-            <div className="text-2xl font-bold text-indigo-800">
+          <div className="bg-indigo-100 p-2 sm:p-3 rounded-lg col-span-1 sm:col-span-2">
+            <div className="text-xs sm:text-sm text-indigo-600">現在の時限</div>
+            <div className="text-lg sm:text-2xl font-bold text-indigo-800">
               {currentPeriod ? currentPeriod.name : '授業時間外'}
             </div>
           </div>
         </div>
 
-        {/* 時限一覧 */}
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-xs">
+        {/* 時限一覧 - レスポンシブ対応 */}
+        <div className="mt-3 sm:mt-4 grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-8 gap-1 sm:gap-2 text-xs">
           {periods.map(period => (
             <div 
               key={period.id}
-              className={`p-2 rounded text-center ${
+              className={`p-1.5 sm:p-2 rounded text-center ${
                 currentPeriod?.id === period.id 
                   ? 'bg-indigo-200 text-indigo-800 font-bold' 
                   : 'bg-gray-100 text-gray-600'
               }`}
             >
-              <div className="font-semibold">{period.name}</div>
-              <div>{period.start}-{period.end}</div>
+              <div className="font-semibold text-xs sm:text-sm">{period.name}</div>
+              <div className="text-xs">{period.start}-{period.end}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* メインコンテンツ */}
-      <div className="flex-1 px-4 pb-20">
+      <div className="flex-1 px-3 sm:px-4 pb-20">
         {/* ビュー切替 */}
         <div className="flex justify-center mb-4">
           <div className="bg-white rounded-lg p-1 shadow-md">
             <button
               onClick={() => setViewMode('calendar')}
-              className={`px-4 py-2 rounded-md transition-colors ${
+              className={`px-3 sm:px-4 py-2 rounded-md transition-colors text-sm ${
                 viewMode === 'calendar'
                   ? 'bg-indigo-500 text-white'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
-              <Calendar className="w-4 h-4 inline-block mr-2" />
+              <Calendar className="w-4 h-4 inline-block mr-1 sm:mr-2" />
               カレンダー
             </button>
             <button
               onClick={() => setViewMode('timetable')}
-              className={`px-4 py-2 rounded-md transition-colors ${
+              className={`px-3 sm:px-4 py-2 rounded-md transition-colors text-sm ${
                 viewMode === 'timetable'
                   ? 'bg-indigo-500 text-white'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
-              <BookOpen className="w-4 h-4 inline-block mr-2" />
+              <BookOpen className="w-4 h-4 inline-block mr-1 sm:mr-2" />
               時間割
             </button>
           </div>
@@ -644,25 +865,37 @@ const handleLogout = async () => {
           <div className="space-y-4">
             {/* 天気情報 */}
             {weather && (
-              <div className="bg-white rounded-lg shadow-lg p-4">
+              <div className="bg-white rounded-lg shadow-lg p-3 sm:p-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-{getWeatherIcon(weather?.weather?.[0]?.main)}
+                  <div className="flex items-center space-x-2 sm:space-x-3">
+                    {getWeatherIcon(weather?.weather?.[0]?.main)}
                     <div>
-                      <div className="font-semibold text-lg">駒沢大学周辺の天気</div>
-<div className="text-gray-600">{weather?.weather?.[0]?.description}</div>
+                      <div className="font-semibold text-sm sm:text-lg">駒沢大学周辺の天気</div>
+                      <div className="text-xs sm:text-base text-gray-600">{weather?.weather?.[0]?.description}</div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold text-indigo-600">{Math.round(weather?.main?.temp ?? 0)}°C</div>
-                    <div className="text-sm text-gray-500">体感 {Math.round(weather?.main?.feels_like ?? 0)}°C</div>
-                    <div className="text-sm text-gray-500">湿度 {weather?.main?.humidity ?? 0}%</div>
+                    <div className="text-xl sm:text-2xl font-bold text-indigo-600">{Math.round(weather?.main?.temp ?? 0)}°C</div>
+                    <div className="text-xs sm:text-sm text-gray-500">体感 {Math.round(weather?.main?.feels_like ?? 0)}°C</div>
+                    <div className="text-xs sm:text-sm text-gray-500">湿度 {weather?.main?.humidity ?? 0}%</div>
                   </div>
                 </div>
               </div>
             )}
+{/* 図書館の開館状況 */}
+{(() => {
+  const libStatus = getLibraryStatus();
+  return (
+    <div className={`rounded-lg px-3 py-2 ${libStatus.bgColor}`}>
+      <div className={`text-sm font-semibold ${libStatus.statusColor}`}>
+        図書館は現在：{libStatus.status}
+      </div>
+      <div className="text-xs text-gray-700">開館時間：{libStatus.hours}</div>
+    </div>
+  );
+})()}
 
-            <div className="bg-white rounded-lg shadow-lg p-4">
+            <div className="bg-white rounded-lg shadow-lg p-3 sm:p-4">
               {/* カレンダーヘッダー */}
               <div className="flex items-center justify-between mb-4">
                 <button
@@ -671,7 +904,7 @@ const handleLogout = async () => {
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
-                <h2 className="text-xl font-bold">
+                <h2 className="text-lg sm:text-xl font-bold">
                   {currentDate.getFullYear()}年{currentDate.getMonth() + 1}月
                 </h2>
                 <button
@@ -685,13 +918,13 @@ const handleLogout = async () => {
               {/* カレンダーグリッド */}
               <div className="grid grid-cols-7 gap-1 mb-2">
                 {['日', '月', '火', '水', '木', '金', '土'].map(day => (
-                  <div key={day} className={`text-center p-2 font-semibold ${day === '日' ? 'text-red-500' : 'text-gray-700'}`}>
+                  <div key={day} className={`text-center p-1 sm:p-2 font-semibold text-sm ${day === '日' ? 'text-red-500' : 'text-gray-700'}`}>
                     {day}
                   </div>
                 ))}
               </div>
 
-              <div className="grid grid-cols-7 gap-1">
+              <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
                 {getCalendarDays().map((date, index) => {
                   const isCurrentMonth = date.getMonth() === currentDate.getMonth();
                   const isToday = date.toDateString() === new Date().toDateString();
@@ -708,13 +941,13 @@ const handleLogout = async () => {
                         setSelectedDate(date);
                         setShowEventForm(true);
                       }}
-                      className={`min-h-[80px] p-1 border cursor-pointer hover:bg-gray-50 transition-colors ${
+                      className={`min-h-[60px] sm:min-h-[80px] p-1 border cursor-pointer hover:bg-gray-50 transition-colors ${
                         isCurrentMonth ? 'bg-white' : 'bg-gray-100'
                       } ${isToday ? 'ring-2 ring-indigo-500' : ''} ${
                         (isSunday || isHoliday) && isCurrentMonth ? 'text-red-500' : ''
                       }`}
                     >
-                      <div className={`text-sm ${isToday ? 'font-bold' : ''} ${isHoliday ? 'text-red-600 font-semibold' : ''}`}>
+                      <div className={`text-xs sm:text-sm ${isToday ? 'font-bold' : ''} ${isHoliday ? 'text-red-600 font-semibold' : ''}`}>
                         {date.getDate()}
                       </div>
                       
@@ -764,12 +997,12 @@ const handleLogout = async () => {
         {viewMode === 'timetable' && (
           <div className="bg-white rounded-lg shadow-lg overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[800px]">
+              <table className="w-full min-w-[700px]">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="p-3 text-left font-semibold border-b">時限</th>
+                    <th className="p-2 sm:p-3 text-left font-semibold border-b text-sm">時限</th>
                     {days.map(day => (
-                      <th key={day} className="p-3 text-center font-semibold border-b min-w-[120px]">
+                      <th key={day} className="p-2 sm:p-3 text-center font-semibold border-b min-w-[100px] sm:min-w-[120px] text-sm">
                         {day}
                       </th>
                     ))}
@@ -778,8 +1011,8 @@ const handleLogout = async () => {
                 <tbody>
                   {periods.filter(p => p.id !== 'lunch').map(period => (
                     <tr key={period.id} className="border-b">
-                      <td className="p-3 bg-gray-50 font-semibold">
-                        <div>{period.name}</div>
+                      <td className="p-2 sm:p-3 bg-gray-50 font-semibold">
+                        <div className="text-sm">{period.name}</div>
                         <div className="text-xs text-gray-600">{period.start}-{period.end}</div>
                       </td>
                       {days.map(day => {
@@ -793,17 +1026,17 @@ const handleLogout = async () => {
                               setTimetableForm(slot || { subject: '', teacher: '', room: '' });
                               setShowTimetableForm(true);
                             }}
-                            className="p-2 border-l cursor-pointer hover:bg-gray-50 transition-colors"
+                            className="p-1.5 sm:p-2 border-l cursor-pointer hover:bg-gray-50 transition-colors"
                           >
                             {slot ? (
-                              <div className="text-sm">
-                                <div className="font-semibold text-indigo-800 mb-1">{slot.subject}</div>
-                                <div className="text-gray-600">{slot.teacher}</div>
-                                <div className="text-gray-500 text-xs">{slot.room}</div>
+                              <div className="text-xs sm:text-sm">
+                                <div className="font-semibold text-indigo-800 mb-1 truncate">{slot.subject}</div>
+                                <div className="text-gray-600 truncate">{slot.teacher}</div>
+                                <div className="text-gray-500 text-xs truncate">{slot.room}</div>
                               </div>
                             ) : (
                               <div className="text-gray-400 text-center">
-                                <Plus className="w-4 h-4 mx-auto" />
+                                <Plus className="w-3 h-3 sm:w-4 sm:h-4 mx-auto" />
                               </div>
                             )}
                           </td>
@@ -821,7 +1054,7 @@ const handleLogout = async () => {
       {/* イベント入力フォーム */}
       {showEventForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">予定を追加</h3>
               <button
@@ -846,7 +1079,7 @@ const handleLogout = async () => {
                 const personalEvents = events[dateKey] || [];
                 
                 return (
-                  <div className="mb-4 space-y-2">
+                  <div className="mb-4 space-y-2 max-h-32 overflow-y-auto">
                     {holiday && (
                       <div className="text-sm bg-red-100 text-red-800 px-2 py-1 rounded">
                         祝日: {holiday}
@@ -984,61 +1217,61 @@ const handleLogout = async () => {
         </div>
       )}
 
-      {/* 下部ナビゲーション */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg">
-        <div className="grid grid-cols-6 gap-1 p-2">
+      {/* 下部ナビゲーション - レスポンシブ対応 */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg safe-area-pb">
+        <div className="grid grid-cols-6 gap-0.5 sm:gap-1 p-2 sm:p-3">
           <a
             href="https://koneco.komazawa-u.ac.jp/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-col items-center p-3 hover:bg-gray-100 transition-colors rounded-lg"
+            className="flex flex-col items-center p-2 sm:p-3 hover:bg-gray-100 transition-colors rounded-lg"
           >
-            <Building className="w-6 h-6 text-indigo-600 mb-1" />
+            <Building className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 mb-1" />
             <span className="text-xs text-gray-600">Koneco</span>
           </a>
           <a
             href="https://webclass.komazawa-u.ac.jp/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-col items-center p-3 hover:bg-gray-100 transition-colors rounded-lg"
+            className="flex flex-col items-center p-2 sm:p-3 hover:bg-gray-100 transition-colors rounded-lg"
           >
-            <BookOpen className="w-6 h-6 text-green-600 mb-1" />
+            <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 mb-1" />
             <span className="text-xs text-gray-600">Webclass</span>
           </a>
           <a
             href="https://www.komazawa-u.ac.jp/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-col items-center p-3 hover:bg-gray-100 transition-colors rounded-lg"
+            className="flex flex-col items-center p-2 sm:p-3 hover:bg-gray-100 transition-colors rounded-lg"
           >
-            <GraduationCap className="w-6 h-6 text-blue-600 mb-1" />
+            <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 mb-1" />
             <span className="text-xs text-gray-600">大学HP</span>
           </a>
           <a
             href="https://www.instagram.com/komazawa_no_today/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-col items-center p-3 hover:bg-gray-100 transition-colors rounded-lg"
+            className="flex flex-col items-center p-2 sm:p-3 hover:bg-gray-100 transition-colors rounded-lg"
           >
-            <Instagram className="w-6 h-6 text-pink-600 mb-1" />
+            <Instagram className="w-5 h-5 sm:w-6 sm:h-6 text-pink-600 mb-1" />
             <span className="text-xs text-gray-600">Instagram</span>
           </a>
           <a
             href="https://mail.google.com/a/komazawa-u.ac.jp"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-col items-center p-3 hover:bg-gray-100 transition-colors rounded-lg"
+            className="flex flex-col items-center p-2 sm:p-3 hover:bg-gray-100 transition-colors rounded-lg"
           >
-            <Mail className="w-6 h-6 text-red-600 mb-1" />
+            <Mail className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 mb-1" />
             <span className="text-xs text-gray-600">Gmail</span>
           </a>
           <a
             href="https://wwwopac.komazawa-u.ac.jp/opac/rsv/?lang=0"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-col items-center p-3 hover:bg-gray-100 transition-colors rounded-lg"
+            className="flex flex-col items-center p-2 sm:p-3 hover:bg-gray-100 transition-colors rounded-lg"
           >
-            <Compass className="w-6 h-6 text-purple-600 mb-1" />
+            <Compass className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600 mb-1" />
             <span className="text-xs text-gray-600">施設予約</span>
           </a>
         </div>
