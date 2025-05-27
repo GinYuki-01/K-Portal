@@ -8,6 +8,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { sendEmailVerification } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
+import { onSnapshot } from 'firebase/firestore';
 
 
 
@@ -142,23 +143,39 @@ const [isSignUp, setIsSignUp] = useState(false);
   };
 
 useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+  let unsubscribeFirestore = null;
+
+  const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
     if (currentUser) {
-      // ユーザーの最新情報を取得
       await currentUser.reload();
-      
-      // メール確認が完了していない場合は強制ログアウト
+
       if (!currentUser.emailVerified) {
         await signOut(auth);
         setUser(null);
         setAuthError('メールアドレスの確認が完了していません。確認メールのリンクをクリックしてください。');
         return;
       }
+
+      setUser(currentUser);
+
+      const userRef = doc(db, 'users', currentUser.uid);
+      unsubscribeFirestore = onSnapshot(userRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.events) setEvents(data.events);
+          if (data.timetable) setTimetable(data.timetable);
+        }
+      });
+    } else {
+      setUser(null);
+      if (unsubscribeFirestore) unsubscribeFirestore();
     }
-    setUser(currentUser);
-  await loadUserData(); 
   });
-  return () => unsubscribe();
+
+  return () => {
+    unsubscribeAuth();
+    if (unsubscribeFirestore) unsubscribeFirestore();
+  };
 }, []);
 useEffect(() => {
   if (user) {
