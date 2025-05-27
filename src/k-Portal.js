@@ -5,6 +5,7 @@ import { Clock, Calendar, BookOpen, GraduationCap, Instagram, Mail, Compass, Bui
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { sendEmailVerification } from 'firebase/auth';
 
 
 
@@ -113,7 +114,19 @@ const [isSignUp, setIsSignUp] = useState(false); // ← これを追加
   // 認証状態の監視（実際のFirebaseを使用する場合）
 // useEffect(() => { ... }, []); の中で「認証状態の監視」と書かれている箇所と入れ替える
 useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+  const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    if (currentUser) {
+      // ユーザーの最新情報を取得
+      await currentUser.reload();
+      
+      // メール確認が完了していない場合は強制ログアウト
+      if (!currentUser.emailVerified) {
+        await signOut(auth);
+        setUser(null);
+        setAuthError('メールアドレスの確認が完了していません。確認メールのリンクをクリックしてください。');
+        return;
+      }
+    }
     setUser(currentUser);
   });
   return () => unsubscribe();
@@ -131,7 +144,7 @@ useEffect(() => {
         // setWeather(data);
         
         // デモ用のモックデータ
-const API_KEY = '9a7f23efd0cad7fa3df276362380b756'; // ←あなたのAPIキー
+const API_KEY = '9a7f23efd0cad7fa3df276362380b756';
 const lat = 35.6284; // 駒澤大学の緯度
 const lon = 139.6731; // 駒澤大学の経度
 
@@ -196,7 +209,6 @@ setWeather(data);
     return () => clearInterval(timer);
   }, []);
 
-  // ログイン処理
 const handleLogin = async () => {
   if (!loginEmail || !loginPassword) {
     setAuthError('メールアドレスとパスワードを入力してください');
@@ -212,22 +224,72 @@ const handleLogin = async () => {
   setAuthError('');
 
   try {
-    const result = isSignUp
-      ? await createUserWithEmailAndPassword(auth, loginEmail, loginPassword)
-      : await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+    if (isSignUp) {
+      // 新規登録の場合
+      const result = await createUserWithEmailAndPassword(auth, loginEmail, loginPassword);
+      await sendEmailVerification(result.user);
+      
+      // 新規登録後は即座にログアウトして確認を促す
+      await signOut(auth);
+      setUser(null);
+      
+      alert('確認メールを送信しました。メールのリンクをクリックしてからログインしてください。');
+      setShowLogin(false);
+      setLoginEmail('');
+      setLoginPassword('');
+      setIsSignUp(false); // 登録後はログインモードに戻す
+      
+    } else {
+      // ログインの場合
+      const result = await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+      
+      // ユーザー情報を再読み込みして最新の確認状態を取得
+      await result.user.reload();
+      
+      // メール確認チェック
+      if (!result.user.emailVerified) {
+        await signOut(auth);
+        setUser(null);
+        setAuthError('メールアドレスの確認が完了していません。確認メールのリンクをクリックしてください。');
+        return;
+      }
 
-    setUser(result.user);
-    setShowLogin(false);
-    setLoginEmail('');
-    setLoginPassword('');
+      // 正常ログイン時の処理（onAuthStateChangedで自動的に処理される）
+      setShowLogin(false);
+      setLoginEmail('');
+      setLoginPassword('');
+    }
+
   } catch (error) {
-    setAuthError(error.message);
+    let errorMessage = 'エラーが発生しました';
+    
+    // Firebaseエラーの日本語化
+    switch (error.code) {
+      case 'auth/email-already-in-use':
+        errorMessage = 'このメールアドレスは既に使用されています';
+        break;
+      case 'auth/weak-password':
+        errorMessage = 'パスワードは6文字以上で入力してください';
+        break;
+      case 'auth/user-not-found':
+        errorMessage = 'ユーザーが見つかりません';
+        break;
+      case 'auth/wrong-password':
+        errorMessage = 'パスワードが間違っています';
+        break;
+      case 'auth/invalid-email':
+        errorMessage = 'メールアドレスの形式が正しくありません';
+        break;
+      default:
+        errorMessage = error.message;
+    }
+    
+    setAuthError(errorMessage);
   } finally {
     setIsLoading(false);
   }
 };
-
-  // ログアウト処理
+// ログアウト処理
 const handleLogout = async () => {
   try {
     await signOut(auth);
@@ -238,7 +300,6 @@ const handleLogout = async () => {
     console.error('ログアウトエラー:', error);
   }
 };
-
 
   // 現在の時限を取得
   const getCurrentPeriod = () => {
@@ -376,82 +437,83 @@ const handleLogout = async () => {
         </div>
       </div>
 
-      {/* ログインモーダル */}
-      {showLogin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold">ログイン</h3>
-              <button
-                onClick={() => {
-                  setShowLogin(false);
-                  setAuthError('');
-                  setLoginEmail('');
-                  setLoginPassword('');
-                }}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>駒澤大学の学生・教職員専用</strong><br />
-                @komazawa-u.ac.jp のメールアドレスでのみログインできます
-              </p>
-            </div>
+{/* ログインモーダル */}
+{showLogin && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-lg p-6 w-full max-w-md">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xl font-semibold">{isSignUp ? '新規登録' : 'ログイン'}</h3>
+        <button
+          onClick={() => {
+            setShowLogin(false);
+            setAuthError('');
+            setLoginEmail('');
+            setLoginPassword('');
+            setIsSignUp(false); // モーダルを閉じる時はログインモードに戻す
+          }}
+          className="p-1 hover:bg-gray-100 rounded"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      
+      <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+        <p className="text-sm text-blue-800">
+          <strong>駒澤大学の学生・教職員専用</strong><br />
+          @komazawa-u.ac.jp のメールアドレスでのみ{isSignUp ? '登録' : 'ログイン'}できます
+        </p>
+      </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  メールアドレス
-                </label>
-                <input
-                  type="email"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="example@komazawa-u.ac.jp"
-                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  パスワード
-                </label>
-                <input
-                  type="password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder="6文字以上"
-                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
-              </div>
-              
-              {authError && (
-                <div className="p-3 bg-red-100 text-red-800 rounded-lg text-sm">
-                  {authError}
-                </div>
-              )}
-              
-              <button
-                onClick={handleLogin}
-                disabled={isLoading}
-                className="w-full bg-indigo-500 text-white py-3 px-4 rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50"
-              >
-                {isLoading ? '処理中...' : 'ログイン'}
-              </button>
-<button
-  onClick={() => setIsSignUp(prev => !prev)}
-  className="w-full text-indigo-600 hover:text-indigo-800 transition-colors text-sm"
->
-  {isSignUp ? 'ログインに戻る' : '新規登録はこちら'}
-</button>
-
-            </div>
-          </div>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            メールアドレス
+          </label>
+          <input
+            type="email"
+            value={loginEmail}
+            onChange={(e) => setLoginEmail(e.target.value)}
+            placeholder="example@komazawa-u.ac.jp"
+            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
         </div>
-      )}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            パスワード
+          </label>
+          <input
+            type="password"
+            value={loginPassword}
+            onChange={(e) => setLoginPassword(e.target.value)}
+            placeholder="6文字以上"
+            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
+        
+        {authError && (
+          <div className="p-3 bg-red-100 text-red-800 rounded-lg text-sm">
+            {authError}
+          </div>
+        )}
+        
+        <button
+          onClick={handleLogin}
+          disabled={isLoading}
+          className="w-full bg-indigo-500 text-white py-3 px-4 rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50"
+        >
+          {isLoading ? '処理中...' : (isSignUp ? '登録' : 'ログイン')}
+        </button>
+        
+        <button
+          onClick={() => setIsSignUp(prev => !prev)}
+          className="w-full text-indigo-600 hover:text-indigo-800 transition-colors text-sm"
+        >
+          {isSignUp ? 'ログインに戻る' : '新規登録はこちら'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* ヘッダー情報（スクロール可能） */}
       <div className="bg-white shadow-lg p-4 mb-4 mt-20">
